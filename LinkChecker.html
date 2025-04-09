@@ -1,0 +1,372 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Link and Anchor Validator</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            line-height: 1.6;
+            max-width: 1000px;
+            margin: 0 auto;
+            padding: 20px;
+            color: #333;
+        }
+        h1 {
+            color: #2c3e50;
+            text-align: center;
+        }
+        .input-section {
+            background-color: #f9f9f9;
+            padding: 20px;
+            border-radius: 8px;
+            margin-bottom: 20px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+        label {
+            display: block;
+            margin-bottom: 8px;
+            font-weight: bold;
+        }
+        input[type="url"] {
+            width: 100%;
+            padding: 10px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            font-size: 16px;
+            margin-bottom: 15px;
+        }
+        button {
+            background-color: #3498db;
+            color: white;
+            border: none;
+            padding: 10px 20px;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 16px;
+            transition: background-color 0.3s;
+        }
+        button:hover {
+            background-color: #2980b9;
+        }
+        .results {
+            margin-top: 30px;
+        }
+        .summary {
+            background-color: #e8f4fc;
+            padding: 15px;
+            border-radius: 8px;
+            margin-bottom: 20px;
+        }
+        .link-result {
+            padding: 15px;
+            border-bottom: 1px solid #eee;
+        }
+        .valid {
+            color: #27ae60;
+        }
+        .invalid {
+            color: #e74c3c;
+        }
+        .warning {
+            color: #f39c12;
+        }
+        .loading {
+            text-align: center;
+            margin: 20px 0;
+            display: none;
+        }
+        .spinner {
+            border: 4px solid rgba(0, 0, 0, 0.1);
+            border-radius: 50%;
+            border-top: 4px solid #3498db;
+            width: 30px;
+            height: 30px;
+            animation: spin 1s linear infinite;
+            margin: 0 auto;
+        }
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+        .tab {
+            overflow: hidden;
+            border: 1px solid #ccc;
+            background-color: #f1f1f1;
+            border-radius: 4px 4px 0 0;
+        }
+        .tab button {
+            background-color: inherit;
+            float: left;
+            border: none;
+            outline: none;
+            cursor: pointer;
+            padding: 10px 16px;
+            transition: 0.3s;
+            color: #333;
+        }
+        .tab button:hover {
+            background-color: #ddd;
+        }
+        .tab button.active {
+            background-color: #3498db;
+            color: white;
+        }
+        .tabcontent {
+            display: none;
+            padding: 15px;
+            border: 1px solid #ccc;
+            border-top: none;
+            border-radius: 0 0 4px 4px;
+        }
+        .visible {
+            display: block;
+        }
+    </style>
+</head>
+<body>
+    <h1>Link and Anchor Validator</h1>
+    
+    <div class="input-section">
+        <label for="url">Enter URL to check:</label>
+        <input type="url" id="url" placeholder="https://example.com" required>
+        <label for="classname">Specify the classname:</label>
+        <input type="text" id="classname" placeholder="">
+        <button id="check-btn">Check Links</button>
+        <div class="loading" id="loading">
+            <div class="spinner"></div>
+            <p>Checking links, please wait...</p>
+        </div>
+    </div>
+    
+    <div class="results" id="results" style="display: none;">
+        <h2>Validation Results</h2>
+        <div class="summary" id="summary"></div>
+        
+        <div class="tab">
+            <button class="tablinks active" onclick="openTab(event, 'all-links')">All Links</button>
+            <button class="tablinks" onclick="openTab(event, 'invalid-links')">Invalid Links</button>
+            <button class="tablinks" onclick="openTab(event, 'anchor-issues')">Anchor Issues</button>
+        </div>
+        
+        <div id="all-links" class="tabcontent visible"></div>
+        <div id="invalid-links" class="tabcontent"></div>
+        <div id="anchor-issues" class="tabcontent"></div>
+    </div>
+
+    <script>
+        document.getElementById('check-btn').addEventListener('click', async function() {
+            const url = document.getElementById('url').value.trim();
+            if (!url) {
+                alert('Please enter a valid URL');
+                return;
+            }
+            
+            // Show loading indicator
+            document.getElementById('loading').style.display = 'block';
+            document.getElementById('results').style.display = 'none';
+            
+            try {
+                // Use a proxy to avoid CORS issues
+                const proxyUrl = `https://api.allorigins.win/get?url=${encodeURIComponent(url)}`;
+                const response = await fetch(proxyUrl);
+                
+                if (!response.ok) {
+                    throw new Error('Failed to fetch the URL');
+                }
+                
+                const data = await response.json();
+                const htmlContent = data.contents;
+                
+                if (!htmlContent) {
+                    throw new Error('No content received from the URL');
+                }
+                
+                // Parse the HTML and check links
+                const parser = new DOMParser();
+                const doc = parser.parseFromString(htmlContent, 'text/html');
+                const links = doc.querySelectorAll('a[href]');
+                
+                // Process links
+                const results = await processLinks(Array.from(links), url);
+                displayResults(results);
+                
+            } catch (error) {
+                console.error('Error:', error);
+                document.getElementById('loading').style.display = 'none';
+                alert('Error checking links: ' + error.message);
+            }
+        });
+        
+        async function processLinks(links, baseUrl) {
+            const results = [];
+            let validCount = 0;
+            let invalidCount = 0;
+            let anchorIssuesCount = 0;
+            
+            for (const link of links) {
+                const href = link.getAttribute('href');
+                const text = link.textContent.trim();
+                const result = { href, text, valid: true, issues: [] };
+                
+                // Skip empty or special links
+                if (!href || href.startsWith('javascript:') || href.startsWith('mailto:') || href.startsWith('tel:')) {
+                    continue;
+                }
+                
+                // Check if it's an anchor link
+                if (href.startsWith('#')) {
+                    const anchorId = href.substring(1);
+                    const targetElement = document.getElementById(anchorId);
+                    if (!targetElement) {
+                        result.valid = false;
+                        result.issues.push(`Anchor target #${anchorId} not found on page`);
+                        anchorIssuesCount++;
+                    } else {
+                        validCount++;
+                    }
+                    results.push(result);
+                    continue;
+                }
+                
+                // Check if it's a relative URL
+                let absoluteUrl;
+                try {
+                    absoluteUrl = new URL(href, baseUrl).href;
+                } catch (e) {
+                    result.valid = false;
+                    result.issues.push('Invalid URL format');
+                    invalidCount++;
+                    results.push(result);
+                    continue;
+                }
+                
+                // Check if the link is valid
+                try {
+                    const response = await fetch(absoluteUrl, { method: 'HEAD', mode: 'no-cors' });
+                    // In no-cors mode, we can't read the status, but the request will fail if truly invalid
+                    validCount++;
+                } catch (e) {
+                    // Try with GET if HEAD fails (some servers block HEAD)
+                    try {
+                        await fetch(absoluteUrl, { method: 'GET', mode: 'no-cors' });
+                        validCount++;
+                    } catch (e2) {
+                        result.valid = false;
+                        result.issues.push('Link appears to be broken');
+                        invalidCount++;
+                    }
+                }
+                
+                // Check for anchor in external URL
+                if (absoluteUrl.includes('#')) {
+                    const anchorPart = absoluteUrl.split('#')[1];
+                    try {
+                        // Fetch the page and check for the anchor
+                        const pageResponse = await fetch(absoluteUrl.split('#')[0]);
+                        if (pageResponse.ok) {
+                            const pageHtml = await pageResponse.text();
+                            const pageDoc = new DOMParser().parseFromString(pageHtml, 'text/html');
+                            const anchorElement = pageDoc.getElementById(anchorPart);
+                            if (!anchorElement) {
+                                result.issues.push(`Anchor target #${anchorPart} not found on linked page`);
+                                anchorIssuesCount++;
+                            }
+                        }
+                    } catch (e) {
+                        // Skip anchor check if we can't fetch the page
+                    }
+                }
+                
+                results.push(result);
+            }
+            
+            return {
+                results,
+                stats: {
+                    total: links.length,
+                    valid: validCount,
+                    invalid: invalidCount,
+                    anchorIssues: anchorIssuesCount
+                }
+            };
+        }
+        
+        function displayResults(data) {
+            document.getElementById('loading').style.display = 'none';
+            document.getElementById('results').style.display = 'block';
+            
+            // Display summary
+            const summary = document.getElementById('summary');
+            summary.innerHTML = `
+                <p><strong>Total Links Checked:</strong> ${data.stats.total}</p>
+                <p class="valid"><strong>Valid Links:</strong> ${data.stats.valid}</p>
+                <p class="invalid"><strong>Invalid Links:</strong> ${data.stats.invalid}</p>
+                <p class="warning"><strong>Links with Anchor Issues:</strong> ${data.stats.anchorIssues}</p>
+            `;
+            
+            // Display all links
+            const allLinksContainer = document.getElementById('all-links');
+            allLinksContainer.innerHTML = '<h3>All Links</h3>';
+            
+            // Display invalid links
+            const invalidLinksContainer = document.getElementById('invalid-links');
+            invalidLinksContainer.innerHTML = '<h3>Invalid Links</h3>';
+            
+            // Display anchor issues
+            const anchorIssuesContainer = document.getElementById('anchor-issues');
+            anchorIssuesContainer.innerHTML = '<h3>Links with Anchor Issues</h3>';
+            
+            data.results.forEach(result => {
+                const linkDisplay = `
+                    <div class="link-result">
+                        <p><strong>Link Text:</strong> ${result.text || '(no text)'}</p>
+                        <p><strong>URL:</strong> <a href="${result.href}" target="_blank">${result.href}</a></p>
+                        ${result.issues.length ? `
+                            <p><strong>Issues:</strong></p>
+                            <ul>
+                                ${result.issues.map(issue => `<li class="invalid">${issue}</li>`).join('')}
+                            </ul>
+                        ` : '<p class="valid">No issues found</p>'}
+                    </div>
+                `;
+                
+                allLinksContainer.innerHTML += linkDisplay;
+                
+                if (!result.valid) {
+                    invalidLinksContainer.innerHTML += linkDisplay;
+                }
+                
+                if (result.issues.some(issue => issue.includes('Anchor target'))) {
+                    anchorIssuesContainer.innerHTML += linkDisplay;
+                }
+            });
+            
+            // If no invalid links or anchor issues, show message
+            if (data.stats.invalid === 0) {
+                invalidLinksContainer.innerHTML += '<p class="valid">No invalid links found</p>';
+            }
+            
+            if (data.stats.anchorIssues === 0) {
+                anchorIssuesContainer.innerHTML += '<p class="valid">No anchor issues found</p>';
+            }
+        }
+        
+        function openTab(evt, tabName) {
+            const tabcontent = document.getElementsByClassName("tabcontent");
+            for (let i = 0; i < tabcontent.length; i++) {
+                tabcontent[i].classList.remove("visible");
+            }
+            
+            const tablinks = document.getElementsByClassName("tablinks");
+            for (let i = 0; i < tablinks.length; i++) {
+                tablinks[i].className = tablinks[i].className.replace(" active", "");
+            }
+            
+            document.getElementById(tabName).classList.add("visible");
+            evt.currentTarget.className += " active";
+        }
+    </script>
+</body>
+</html>
