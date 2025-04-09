@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Link and Anchor Validator</title>
+    <title>Advanced Link and Anchor Validator</title>
     <style>
         body {
             font-family: Arial, sans-serif;
@@ -29,13 +29,23 @@
             margin-bottom: 8px;
             font-weight: bold;
         }
-        input[type="url"] {
+        input[type="url"], input[type="text"] {
             width: 100%;
             padding: 10px;
             border: 1px solid #ddd;
             border-radius: 4px;
             font-size: 16px;
             margin-bottom: 15px;
+        }
+        textarea {
+            width: 100%;
+            padding: 10px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            font-size: 16px;
+            margin-bottom: 15px;
+            min-height: 100px;
+            resize: vertical;
         }
         button {
             background-color: #3498db;
@@ -49,6 +59,12 @@
         }
         button:hover {
             background-color: #2980b9;
+        }
+        button.secondary {
+            background-color: #95a5a6;
+        }
+        button.secondary:hover {
+            background-color: #7f8c8d;
         }
         .results {
             margin-top: 30px;
@@ -123,20 +139,68 @@
         .visible {
             display: block;
         }
+        .url-tag {
+            display: inline-block;
+            background-color: #e0e0e0;
+            padding: 2px 8px;
+            border-radius: 4px;
+            margin-right: 5px;
+            margin-bottom: 5px;
+        }
+        .url-tag button {
+            background: none;
+            border: none;
+            color: #666;
+            padding: 0 4px;
+            cursor: pointer;
+            font-size: 12px;
+        }
+        .url-list {
+            border: 1px solid #ddd;
+            padding: 10px;
+            border-radius: 4px;
+            margin-bottom: 15px;
+            min-height: 20px;
+        }
+        .instructions {
+            font-size: 14px;
+            color: #666;
+            margin-bottom: 15px;
+        }
     </style>
 </head>
 <body>
-    <h1>Link and Anchor Validator</h1>
+    <h1>Advanced Link and Anchor Validator</h1>
     
     <div class="input-section">
-        <label for="url">Enter URL to check:</label>
-        <input type="url" id="url" placeholder="https://example.com" required>
-        <label for="classname">Specify the classname:</label>
-        <input type="text" id="classname" placeholder="">
+        <label for="urls">Enter URLs to check (one per line or comma separated):</label>
+        <textarea id="urls" placeholder="https://example.com
+https://another-site.com/page"></textarea>
+        
+        <div class="url-list" id="url-list" style="display: none;">
+            <p>URLs to check:</p>
+            <div id="url-tags"></div>
+        </div>
+        
+        <label for="element-class">Element class to check (leave empty for all links):</label>
+        <input type="text" id="element-class" placeholder="e.g., menu-link or .menu-link">
+        
+        <div class="instructions">
+            <p><strong>Instructions:</strong></p>
+            <ul>
+                <li>Enter multiple URLs separated by new lines or commas</li>
+                <li>Specify a class name (with or without the dot) to check only links within elements with that class</li>
+                <li>Empty class field will check all links on the page</li>
+            </ul>
+        </div>
+        
         <button id="check-btn">Check Links</button>
+        <button id="reset-btn" class="secondary">Reset</button>
+        
         <div class="loading" id="loading">
             <div class="spinner"></div>
             <p>Checking links, please wait...</p>
+            <p id="current-url"></p>
         </div>
     </div>
     
@@ -156,17 +220,126 @@
     </div>
 
     <script>
-        document.getElementById('check-btn').addEventListener('click', async function() {
-            const url = document.getElementById('url').value.trim();
-            if (!url) {
-                alert('Please enter a valid URL');
+        document.addEventListener('DOMContentLoaded', function() {
+            const urlsInput = document.getElementById('urls');
+            const urlList = document.getElementById('url-list');
+            const urlTags = document.getElementById('url-tags');
+            
+            // Parse URLs when input changes
+            urlsInput.addEventListener('input', updateUrlTags);
+            
+            // Reset button
+            document.getElementById('reset-btn').addEventListener('click', function() {
+                urlsInput.value = '';
+                document.getElementById('element-class').value = '';
+                urlList.style.display = 'none';
+                document.getElementById('results').style.display = 'none';
+            });
+            
+            // Check button
+            document.getElementById('check-btn').addEventListener('click', async function() {
+                const urls = getUrlsFromInput();
+                if (urls.length === 0) {
+                    alert('Please enter at least one valid URL');
+                    return;
+                }
+                
+                const elementClass = document.getElementById('element-class').value.trim().replace(/^\./, '');
+                
+                // Show loading indicator
+                document.getElementById('loading').style.display = 'block';
+                document.getElementById('results').style.display = 'none';
+                
+                try {
+                    const allResults = [];
+                    let totalStats = {
+                        total: 0,
+                        valid: 0,
+                        invalid: 0,
+                        anchorIssues: 0
+                    };
+                    
+                    // Process each URL
+                    for (const url of urls) {
+                        document.getElementById('current-url').textContent = `Checking: ${url}`;
+                        
+                        const urlResults = await checkSingleUrl(url, elementClass);
+                        allResults.push({
+                            url,
+                            results: urlResults.results,
+                            stats: urlResults.stats
+                        });
+                        
+                        // Accumulate stats
+                        totalStats.total += urlResults.stats.total;
+                        totalStats.valid += urlResults.stats.valid;
+                        totalStats.invalid += urlResults.stats.invalid;
+                        totalStats.anchorIssues += urlResults.stats.anchorIssues;
+                    }
+                    
+                    displayResults(allResults, totalStats);
+                    
+                } catch (error) {
+                    console.error('Error:', error);
+                    document.getElementById('loading').style.display = 'none';
+                    alert('Error checking links: ' + error.message);
+                } finally {
+                    document.getElementById('current-url').textContent = '';
+                }
+            });
+        });
+        
+        function updateUrlTags() {
+            const urls = getUrlsFromInput();
+            const urlTags = document.getElementById('url-tags');
+            const urlList = document.getElementById('url-list');
+            
+            if (urls.length === 0) {
+                urlList.style.display = 'none';
                 return;
             }
             
-            // Show loading indicator
-            document.getElementById('loading').style.display = 'block';
-            document.getElementById('results').style.display = 'none';
+            urlTags.innerHTML = '';
+            urls.forEach(url => {
+                const tag = document.createElement('div');
+                tag.className = 'url-tag';
+                tag.innerHTML = `${url} <button onclick="removeUrl('${url}')">×</button>`;
+                urlTags.appendChild(tag);
+            });
             
+            urlList.style.display = 'block';
+        }
+        
+        function removeUrl(urlToRemove) {
+            const urlsInput = document.getElementById('urls');
+            const currentUrls = getUrlsFromInput();
+            const updatedUrls = currentUrls.filter(url => url !== urlToRemove);
+            
+            urlsInput.value = updatedUrls.join('\n');
+            updateUrlTags();
+        }
+        
+        function getUrlsFromInput() {
+            const input = document.getElementById('urls').value.trim();
+            if (!input) return [];
+            
+            // Split by new lines or commas
+            const urls = input.split(/[\n,]+/)
+                .map(url => url.trim())
+                .filter(url => url.length > 0);
+            
+            // Validate URLs
+            return urls.filter(url => {
+                try {
+                    new URL(url);
+                    return true;
+                } catch {
+                    return false;
+                }
+            });
+        }
+        
+        async function checkSingleUrl(url, elementClass) {
             try {
                 // Use a proxy to avoid CORS issues
                 const proxyUrl = `https://api.allorigins.win/get?url=${encodeURIComponent(url)}`;
@@ -186,18 +359,28 @@
                 // Parse the HTML and check links
                 const parser = new DOMParser();
                 const doc = parser.parseFromString(htmlContent, 'text/html');
-                const links = doc.querySelectorAll('a[href]');
+                
+                // Get links based on element class if specified
+                let links;
+                if (elementClass) {
+                    const containers = doc.querySelectorAll(`.${elementClass}`);
+                    links = Array.from(containers).reduce((acc, container) => {
+                        const containerLinks = container.querySelectorAll('a[href]');
+                        return [...acc, ...Array.from(containerLinks)];
+                    }, []);
+                } else {
+                    links = doc.querySelectorAll('a[href]');
+                }
                 
                 // Process links
                 const results = await processLinks(Array.from(links), url);
-                displayResults(results);
+                return results;
                 
             } catch (error) {
-                console.error('Error:', error);
-                document.getElementById('loading').style.display = 'none';
-                alert('Error checking links: ' + error.message);
+                console.error(`Error checking ${url}:`, error);
+                throw error;
             }
-        });
+        }
         
         async function processLinks(links, baseUrl) {
             const results = [];
@@ -293,17 +476,18 @@
             };
         }
         
-        function displayResults(data) {
+        function displayResults(allResults, totalStats) {
             document.getElementById('loading').style.display = 'none';
             document.getElementById('results').style.display = 'block';
             
             // Display summary
             const summary = document.getElementById('summary');
             summary.innerHTML = `
-                <p><strong>Total Links Checked:</strong> ${data.stats.total}</p>
-                <p class="valid"><strong>Valid Links:</strong> ${data.stats.valid}</p>
-                <p class="invalid"><strong>Invalid Links:</strong> ${data.stats.invalid}</p>
-                <p class="warning"><strong>Links with Anchor Issues:</strong> ${data.stats.anchorIssues}</p>
+                <p><strong>Total URLs Checked:</strong> ${allResults.length}</p>
+                <p><strong>Total Links Checked:</strong> ${totalStats.total}</p>
+                <p class="valid"><strong>Valid Links:</strong> ${totalStats.valid}</p>
+                <p class="invalid"><strong>Invalid Links:</strong> ${totalStats.invalid}</p>
+                <p class="warning"><strong>Links with Anchor Issues:</strong> ${totalStats.anchorIssues}</p>
             `;
             
             // Display all links
@@ -318,38 +502,52 @@
             const anchorIssuesContainer = document.getElementById('anchor-issues');
             anchorIssuesContainer.innerHTML = '<h3>Links with Anchor Issues</h3>';
             
-            data.results.forEach(result => {
-                const linkDisplay = `
-                    <div class="link-result">
-                        <p><strong>Link Text:</strong> ${result.text || '(no text)'}</p>
-                        <p><strong>URL:</strong> <a href="${result.href}" target="_blank">${result.href}</a></p>
-                        ${result.issues.length ? `
-                            <p><strong>Issues:</strong></p>
-                            <ul>
-                                ${result.issues.map(issue => `<li class="invalid">${issue}</li>`).join('')}
-                            </ul>
-                        ` : '<p class="valid">No issues found</p>'}
-                    </div>
-                `;
+            allResults.forEach(urlResult => {
+                const urlHeader = `<h4>URL: <a href="${urlResult.url}" target="_blank">${urlResult.url}</a></h4>`;
                 
-                allLinksContainer.innerHTML += linkDisplay;
+                allLinksContainer.innerHTML += urlHeader;
+                invalidLinksContainer.innerHTML += urlHeader;
+                anchorIssuesContainer.innerHTML += urlHeader;
                 
-                if (!result.valid) {
-                    invalidLinksContainer.innerHTML += linkDisplay;
-                }
+                let urlInvalidLinks = '';
+                let urlAnchorIssues = '';
                 
-                if (result.issues.some(issue => issue.includes('Anchor target'))) {
-                    anchorIssuesContainer.innerHTML += linkDisplay;
-                }
+                urlResult.results.forEach(result => {
+                    const linkDisplay = `
+                        <div class="link-result">
+                            <p><strong>Link Text:</strong> ${result.text || '(no text)'}</p>
+                            <p><strong>URL:</strong> <a href="${result.href}" target="_blank">${result.href}</a></p>
+                            ${result.issues.length ? `
+                                <p><strong>Issues:</strong></p>
+                                <ul>
+                                    ${result.issues.map(issue => `<li class="invalid">${issue}</li>`).join('')}
+                                </ul>
+                            ` : '<p class="valid">No issues found</p>'}
+                        </div>
+                    `;
+                    
+                    allLinksContainer.innerHTML += linkDisplay;
+                    
+                    if (!result.valid) {
+                        urlInvalidLinks += linkDisplay;
+                    }
+                    
+                    if (result.issues.some(issue => issue.includes('Anchor target'))) {
+                        urlAnchorIssues += linkDisplay;
+                    }
+                });
+                
+                invalidLinksContainer.innerHTML += urlInvalidLinks || '<p class="valid">No invalid links found</p>';
+                anchorIssuesContainer.innerHTML += urlAnchorIssues || '<p class="valid">No anchor issues found</p>';
             });
             
-            // If no invalid links or anchor issues, show message
-            if (data.stats.invalid === 0) {
-                invalidLinksContainer.innerHTML += '<p class="valid">No invalid links found</p>';
+            // If no invalid links or anchor issues across all URLs, show message
+            if (totalStats.invalid === 0) {
+                invalidLinksContainer.innerHTML = '<h3>Invalid Links</h3><p class="valid">No invalid links found across all URLs</p>';
             }
             
-            if (data.stats.anchorIssues === 0) {
-                anchorIssuesContainer.innerHTML += '<p class="valid">No anchor issues found</p>';
+            if (totalStats.anchorIssues === 0) {
+                anchorIssuesContainer.innerHTML = '<h3>Links with Anchor Issues</h3><p class="valid">No anchor issues found across all URLs</p>';
             }
         }
         
