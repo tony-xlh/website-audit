@@ -1,0 +1,338 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>IIS web.config Rule Conflict Checker</title>
+    <style>
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            line-height: 1.6;
+            margin: 0;
+            padding: 20px;
+            color: #333;
+            max-width: 1200px;
+            margin: 0 auto;
+        }
+        h1 {
+            color: #0066cc;
+            border-bottom: 2px solid #0066cc;
+            padding-bottom: 10px;
+        }
+        .container {
+            display: flex;
+            gap: 20px;
+            margin-top: 20px;
+        }
+        .input-section, .results-section {
+            flex: 1;
+            padding: 20px;
+            background-color: #f9f9f9;
+            border-radius: 5px;
+            box-shadow: 0 2px 5px rgba(0,0,0,0.1);
+        }
+        textarea {
+            width: 100%;
+            height: 300px;
+            font-family: Consolas, Monaco, 'Courier New', monospace;
+            padding: 10px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+        }
+        button {
+            background-color: #0066cc;
+            color: white;
+            border: none;
+            padding: 10px 15px;
+            margin-top: 10px;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 16px;
+        }
+        button:hover {
+            background-color: #0055aa;
+        }
+        .conflict {
+            color: #d9534f;
+            font-weight: bold;
+        }
+        .warning {
+            color: #f0ad4e;
+            font-weight: bold;
+        }
+        .success {
+            color: #5cb85c;
+            font-weight: bold;
+        }
+        pre {
+            background-color: #f5f5f5;
+            padding: 10px;
+            border-radius: 4px;
+            overflow-x: auto;
+        }
+        .rule {
+            margin-bottom: 15px;
+            padding: 10px;
+            border-left: 4px solid #0066cc;
+            background-color: #eef7ff;
+        }
+        .rule-title {
+            font-weight: bold;
+            margin-bottom: 5px;
+        }
+        .rule-pattern {
+            font-family: monospace;
+        }
+        .example-section {
+            margin-top: 20px;
+        }
+        .example-btn {
+            background-color: #5bc0de;
+            margin-right: 10px;
+        }
+        .example-btn:hover {
+            background-color: #46b8da;
+        }
+    </style>
+</head>
+<body>
+    <h1>IIS web.config Rule Conflict Checker</h1>
+    <p>This tool helps identify potential conflicts in your IIS URL rewrite rules where more general patterns might override more specific ones.</p>
+    
+    <div class="container">
+        <div class="input-section">
+            <h2>Input your web.config</h2>
+            <textarea id="webConfigInput" placeholder="Paste your web.config content here..."></textarea>
+            <button id="analyzeBtn">Analyze Rules</button>
+            <button id="loadExample" class="example-btn">Load Example</button>
+        </div>
+        
+        <div class="results-section">
+            <h2>Analysis Results</h2>
+            <div id="results"></div>
+        </div>
+    </div>
+    
+    <div class="example-section">
+        <h3>How It Works</h3>
+        <p>This tool checks for two types of potential conflicts:</p>
+        <ol>
+            <li><strong>Specificity Conflicts</strong>: When a general pattern (like "products") might override a more specific one (like "products/details")</li>
+            <li><strong>Order Dependency</strong>: When rules might behave differently if their order is changed</li>
+        </ol>
+        <p>Rules are analyzed based on their URL patterns and conditions to identify potential issues.</p>
+    </div>
+
+    <script>
+        document.getElementById('analyzeBtn').addEventListener('click', analyzeRules);
+        document.getElementById('loadExample').addEventListener('click', loadExample);
+        
+        function loadExample() {
+            const exampleConfig = `<?xml version="1.0" encoding="UTF-8"?>
+<configuration>
+    <system.webServer>
+        <rewrite>
+            <rules>
+                <rule name="Redirect to HTTPS" stopProcessing="true">
+                    <match url="(.*)" />
+                    <conditions>
+                        <add input="{HTTPS}" pattern="^OFF$" />
+                    </conditions>
+                    <action type="Redirect" url="https://{HTTP_HOST}/{R:1}" />
+                </rule>
+                
+                <!-- Potential conflict: This general rule might override more specific ones -->
+                <rule name="Blog Redirect">
+                    <match url="^blog(.*)" />
+                    <action type="Redirect" url="https://blog.example.com{R:1}" />
+                </rule>
+                
+                <!-- More specific rule that might be overridden -->
+                <rule name="Blog Specific Post">
+                    <match url="^blog/special-post" />
+                    <action type="Rewrite" url="/special-post-handler.aspx" />
+                </rule>
+                
+                <!-- Good example of specific rule -->
+                <rule name="Product Details">
+                    <match url="^products/([0-9]+)/details" />
+                    <action type="Rewrite" url="/product-details.aspx?id={R:1}" />
+                </rule>
+                
+                <!-- General rule that comes after specific one -->
+                <rule name="All Products">
+                    <match url="^products/(.*)" />
+                    <action type="Rewrite" url="/products.aspx?category={R:1}" />
+                </rule>
+            </rules>
+        </rewrite>
+    </system.webServer>
+</configuration>`;
+            
+            document.getElementById('webConfigInput').value = exampleConfig;
+        }
+        
+        function analyzeRules() {
+            const configText = document.getElementById('webConfigInput').value;
+            if (!configText.trim()) {
+                alert("Please paste your web.config content first");
+                return;
+            }
+            
+            try {
+                const parser = new DOMParser();
+                const xmlDoc = parser.parseFromString(configText, "text/xml");
+                
+                // Check for XML parsing errors
+                const parserErrors = xmlDoc.getElementsByTagName("parsererror");
+                if (parserErrors.length > 0) {
+                    document.getElementById('results').innerHTML = 
+                        `<p class="conflict">Error parsing XML: ${parserErrors[0].textContent}</p>`;
+                    return;
+                }
+                
+                const rules = xmlDoc.getElementsByTagName("rule");
+                if (rules.length === 0) {
+                    document.getElementById('results').innerHTML = 
+                        "<p>No rewrite rules found in the web.config</p>";
+                    return;
+                }
+                
+                let resultsHtml = `<p>Found ${rules.length} rule(s):</p>`;
+                const ruleData = [];
+                
+                // Extract rule information
+                for (let i = 0; i < rules.length; i++) {
+                    const rule = rules[i];
+                    const name = rule.getAttribute('name') || `Unnamed Rule ${i+1}`;
+                    const stopProcessing = rule.getAttribute('stopProcessing') === 'true';
+                    
+                    const match = rule.getElementsByTagName('match')[0];
+                    const urlPattern = match ? match.getAttribute('url') : '';
+                    
+                    const action = rule.getElementsByTagName('action')[0];
+                    const actionType = action ? action.getAttribute('type') : '';
+                    const actionUrl = action ? action.getAttribute('url') : '';
+                    
+                    const conditions = rule.getElementsByTagName('conditions');
+                    const hasConditions = conditions.length > 0;
+                    
+                    ruleData.push({
+                        name,
+                        stopProcessing,
+                        urlPattern,
+                        actionType,
+                        actionUrl,
+                        hasConditions,
+                        element: rule
+                    });
+                }
+                
+                // Display all rules
+                for (let i = 0; i < ruleData.length; i++) {
+                    const rule = ruleData[i];
+                    resultsHtml += `
+                        <div class="rule">
+                            <div class="rule-title">${i+1}. ${rule.name} ${rule.stopProcessing ? '(stopProcessing=true)' : ''}</div>
+                            <div>Pattern: <span class="rule-pattern">${rule.urlPattern}</span></div>
+                            <div>Action: ${rule.actionType} to ${rule.actionUrl}</div>
+                            ${rule.hasConditions ? '<div>Has conditions</div>' : ''}
+                        </div>`;
+                }
+                
+                // Check for conflicts
+                resultsHtml += `<h3>Conflict Analysis</h3>`;
+                
+                let hasConflicts = false;
+                let hasWarnings = false;
+                
+                // Check for potential specificity conflicts
+                for (let i = 0; i < ruleData.length; i++) {
+                    for (let j = i + 1; j < ruleData.length; j++) {
+                        const rule1 = ruleData[i];
+                        const rule2 = ruleData[j];
+                        
+                        // Skip if either rule stops processing
+                        if (rule1.stopProcessing || rule2.stopProcessing) continue;
+                        
+                        // Check if one rule's pattern is more specific but comes first
+                        if (isMoreSpecific(rule2.urlPattern, rule1.urlPattern)) {
+                            resultsHtml += `
+                                <p class="warning">
+                                    Warning: Rule "${rule2.name}" (pattern: ${rule2.urlPattern}) appears to be more specific than 
+                                    rule "${rule1.name}" (pattern: ${rule1.urlPattern}) but comes after it in the config.
+                                    This might cause the more specific rule to never be reached.
+                                </p>`;
+                            hasWarnings = true;
+                        }
+                        
+                        // Check for identical patterns (exact conflicts)
+                        if (rule1.urlPattern === rule2.urlPattern && 
+                            !rule1.hasConditions && 
+                            !rule2.hasConditions) {
+                            resultsHtml += `
+                                <p class="conflict">
+                                    Conflict: Rules "${rule1.name}" and "${rule2.name}" have identical URL patterns (${rule1.urlPattern}) 
+                                    with no distinguishing conditions. Only the first one will be processed.
+                                </p>`;
+                            hasConflicts = true;
+                        }
+                    }
+                }
+                
+                if (!hasConflicts && !hasWarnings) {
+                    resultsHtml += `<p class="success">No obvious conflicts detected in rule ordering.</p>`;
+                }
+                
+                // Check for common problematic patterns
+                const genericPatterns = ruleData.filter(rule => 
+                    rule.urlPattern === '.*' || 
+                    rule.urlPattern === '(.*)' ||
+                    rule.urlPattern === '^.*$'
+                );
+                
+                if (genericPatterns.length > 0 && !ruleData[0].stopProcessing) {
+                    resultsHtml += `
+                        <p class="warning">
+                            Warning: Found ${genericPatterns.length} very generic pattern(s) (like '.*') that might catch all URLs.
+                            Make sure these are at the correct position in your rule list and have appropriate conditions.
+                        </p>`;
+                    hasWarnings = true;
+                }
+                
+                // General advice
+                resultsHtml += `
+                    <h3>Recommendations</h3>
+                    <ul>
+                        <li>Order rules from most specific to least specific</li>
+                        <li>Use stopProcessing="true" when a rule should be final</li>
+                        <li>Add conditions to make rules more specific when needed</li>
+                        <li>Test your rules thoroughly with various URLs</li>
+                    </ul>`;
+                
+                document.getElementById('results').innerHTML = resultsHtml;
+                
+            } catch (error) {
+                document.getElementById('results').innerHTML = 
+                    `<p class="conflict">Error analyzing rules: ${error.message}</p>`;
+            }
+        }
+        
+        // Helper function to check if pattern2 is more specific than pattern1
+        function isMoreSpecific(pattern2, pattern1) {
+            if (!pattern1 || !pattern2) return false;
+            
+            // Simple check - if pattern2 is longer when stripped of regex characters
+            const clean1 = pattern1.replace(/[^a-zA-Z0-9\/]/g, '');
+            const clean2 = pattern2.replace(/[^a-zA-Z0-9\/]/g, '');
+            
+            // If pattern2 starts with pattern1 but has more characters
+            if (clean2.startsWith(clean1)) {
+                return clean2.length > clean1.length;
+            }
+            
+            return false;
+        }
+    </script>
+</body>
+</html>
