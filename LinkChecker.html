@@ -185,6 +185,10 @@ https://another-site.com/page"></textarea>
         <label for="element-class">Element class to check (leave empty for all links):</label>
         <input type="text" id="element-class" placeholder="e.g., menu-link or .menu-link">
         
+        <label>Enable Proxy:</label>
+        
+        <input type="checkbox" id="enable-proxy" checked>
+        
         <div class="instructions">
             <p><strong>Instructions:</strong></p>
             <ul>
@@ -342,15 +346,26 @@ https://another-site.com/page"></textarea>
         async function checkSingleUrl(url, elementClass) {
             try {
                 // Use a proxy to avoid CORS issues
-                const proxyUrl = `https://api.allorigins.win/get?url=${encodeURIComponent(url)}`;
-                const response = await fetch(proxyUrl);
+                let urlToFetch = url
+                if (document.getElementById("enable-proxy").checked) {
+                    urlToFetch = `https://api.allorigins.win/get?url=${encodeURIComponent(url)}`;
+                }
+                const response = await fetch(urlToFetch);
                 
                 if (!response.ok) {
                     throw new Error('Failed to fetch the URL');
                 }
                 
-                const data = await response.json();
-                const htmlContent = data.contents;
+                
+                
+                let htmlContent = "";
+                
+                if (document.getElementById("enable-proxy").checked) {
+                    const data = await response.json();
+                    htmlContent = data.contents;
+                }else{
+                    htmlContent = await response.text();
+                }
                 
                 if (!htmlContent) {
                     throw new Error('No content received from the URL');
