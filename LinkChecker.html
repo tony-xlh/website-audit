@@ -189,6 +189,10 @@ https://another-site.com/page"></textarea>
         
         <input type="checkbox" id="enable-proxy" checked>
         
+        <label>Display Results (will always output the results in the console):</label>
+        
+        <input type="checkbox" id="display-results" checked>
+        
         <div class="instructions">
             <p><strong>Instructions:</strong></p>
             <ul>
@@ -491,7 +495,42 @@ https://another-site.com/page"></textarea>
             };
         }
         
+        
+        function getPlainTextFromLinks(links){
+            let content = "";
+            for (let index = 0; index < links.length; index++) {
+                const link = links[index];
+                content += (index + 1) + "\n";
+                content += "pageURL: " + link.url.url + "\n";
+                content += "href: " + link.result.href + "\n";
+                content += "text: " + link.result.text + "\n";
+                content += "issues: " + link.result.issues.join(" ") + "\n";
+            }
+            return content;
+        }
+        
         function displayResults(allResults, totalStats) {
+            console.log(allResults);
+            console.log(totalStats);
+            
+            if (!document.getElementById("display-results").checked) {
+                let invalidLinks = [];
+                let anchorIssueLinks = [];
+                allResults.forEach(urlResult => {
+                    urlResult.results.forEach(result => {
+                        if (!result.valid) {
+                            invalidLinks.push({url:urlResult,result:result});
+                        }
+                        if (result.issues.some(issue => issue.includes('Anchor target'))) {
+                            anchorIssueLinks.push({url:urlResult,result:result});
+                        }
+                    });
+                });
+                console.log(invalidLinks);
+                console.log(anchorIssueLinks);
+                document.getElementById('loading').style.display = 'none';
+                return;
+            }
             document.getElementById('loading').style.display = 'none';
             document.getElementById('results').style.display = 'block';
             
