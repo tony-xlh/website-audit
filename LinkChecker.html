@@ -392,7 +392,7 @@ https://another-site.com/page"></textarea>
                 }
                 
                 // Process links
-                const results = await processLinks(Array.from(links), url);
+                const results = await processLinks(Array.from(links), url, doc);
                 return results;
                 
             } catch (error) {
@@ -401,7 +401,7 @@ https://another-site.com/page"></textarea>
             }
         }
         
-        async function processLinks(links, baseUrl) {
+        async function processLinks(links, baseUrl, doc) {
             const results = [];
             let validCount = 0;
             let invalidCount = 0;
@@ -420,7 +420,7 @@ https://another-site.com/page"></textarea>
                 // Check if it's an anchor link
                 if (href.startsWith('#')) {
                     const anchorId = href.substring(1);
-                    const targetElement = document.getElementById(anchorId);
+                    const targetElement = doc.getElementById(anchorId);
                     if (!targetElement) {
                         result.valid = false;
                         result.issues.push(`Anchor target #${anchorId} not found on page`);
