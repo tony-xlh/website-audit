@@ -1,0 +1,171 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Sitemap URL Extractor</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            line-height: 1.6;
+            max-width: 800px;
+            margin: 0 auto;
+            padding: 20px;
+            color: #333;
+        }
+        h1 {
+            color: #2c3e50;
+            text-align: center;
+        }
+        .container {
+            background-color: #f9f9f9;
+            border-radius: 8px;
+            padding: 20px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+        textarea, input {
+            width: 100%;
+            padding: 10px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            font-family: monospace;
+        }
+        button {
+            background-color: #3498db;
+            color: white;
+            border: none;
+            padding: 10px 15px;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 16px;
+            margin-top: 10px;
+        }
+        button:hover {
+            background-color: #2980b9;
+        }
+        .result-area {
+            margin-top: 20px;
+        }
+        .instructions {
+            background-color: #e8f4fc;
+            padding: 15px;
+            border-radius: 4px;
+            margin-bottom: 20px;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>Sitemap URL Extractor</h1>
+        
+        <div class="instructions">
+            <p>This tool extracts URLs from a sitemap.xml file. You can either:</p>
+            <ol>
+                <li>Paste the XML content directly into the textarea below, or</li>
+                <li>Enter the URL of a sitemap.xml file</li>
+            </ol>
+        </div>
+
+        <div>
+            <h3>Option 1: Enter Sitemap URL</h3>
+            <input type="text" id="sitemapUrl" placeholder="https://example.com/sitemap.xml">
+            <button onclick="fetchSitemap()">Fetch and Extract URLs</button>
+        </div>
+
+        <div style="margin: 20px 0; text-align: center;">OR</div>
+
+        <div>
+            <h3>Option 2: Paste Sitemap XML Content</h3>
+            <textarea id="xmlContent" rows="10" placeholder="Paste your sitemap.xml content here..."></textarea>
+            <button onclick="extractUrls()">Extract URLs</button>
+        </div>
+
+        <div class="result-area">
+            <h3>Extracted URLs:</h3>
+            <textarea id="result" rows="10" readonly></textarea>
+            <button onclick="copyToClipboard()">Copy to Clipboard</button>
+            <span id="copyStatus" style="margin-left: 10px; color: green;"></span>
+        </div>
+    </div>
+
+    <script>
+        function extractUrls() {
+            const xmlContent = document.getElementById('xmlContent').value;
+            if (!xmlContent.trim()) {
+                alert('Please paste sitemap.xml content first');
+                return;
+            }
+
+            try {
+                // Parse the XML content
+                const parser = new DOMParser();
+                const xmlDoc = parser.parseFromString(xmlContent, "text/xml");
+                
+                // Get all loc elements (standard sitemap format)
+                const locElements = xmlDoc.getElementsByTagName("loc");
+                
+                // Get all url elements (for sitemap index files)
+                const urlElements = xmlDoc.getElementsByTagName("url");
+                
+                let urls = [];
+                
+                // Extract URLs from loc elements
+                for (let i = 0; i < locElements.length; i++) {
+                    const url = locElements[i].textContent.trim();
+                    if (url) urls.push(url);
+                }
+                
+                // Extract URLs from url elements (sitemap index)
+                for (let i = 0; i < urlElements.length; i++) {
+                    const loc = urlElements[i].getElementsByTagName("loc")[0];
+                    if (loc) {
+                        const url = loc.textContent.trim();
+                        if (url) urls.push(url);
+                    }
+                }
+                
+                // Remove duplicates
+                urls = [...new Set(urls)];
+                
+                // Display the results
+                document.getElementById('result').value = urls.join('\n');
+            } catch (e) {
+                alert('Error parsing XML: ' + e.message);
+                console.error(e);
+            }
+        }
+
+        async function fetchSitemap() {
+            const url = document.getElementById('sitemapUrl').value.trim();
+            if (!url) {
+                alert('Please enter a sitemap URL');
+                return;
+            }
+
+            try {
+                const response = await fetch(url);
+                if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
+                
+                const xmlContent = await response.text();
+                document.getElementById('xmlContent').value = xmlContent;
+                extractUrls();
+            } catch (e) {
+                alert('Error fetching sitemap: ' + e.message);
+                console.error(e);
+            }
+        }
+
+        function copyToClipboard() {
+            const resultTextarea = document.getElementById('result');
+            resultTextarea.select();
+            document.execCommand('copy');
+            
+            const copyStatus = document.getElementById('copyStatus');
+            copyStatus.textContent = 'Copied!';
+            setTimeout(() => {
+                copyStatus.textContent = '';
+            }, 2000);
+        }
+    </script>
+</body>
+</html>
