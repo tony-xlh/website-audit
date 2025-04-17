@@ -193,6 +193,10 @@ https://another-site.com/page"></textarea>
         
         <input type="checkbox" id="display-results" checked>
         
+        <label>Filter URLs (start with):</label>
+
+        <input type="text" id="url-starting-pattern" >
+        
         <div class="instructions">
             <p><strong>Instructions:</strong></p>
             <ul>
@@ -228,6 +232,7 @@ https://another-site.com/page"></textarea>
     </div>
 
     <script>
+        let global = {};
         document.addEventListener('DOMContentLoaded', function() {
             const urlsInput = document.getElementById('urls');
             const urlList = document.getElementById('url-list');
@@ -270,8 +275,14 @@ https://another-site.com/page"></textarea>
                     // Process each URL
                     for (const url of urls) {
                         document.getElementById('current-url').textContent = `Checking: ${url}`;
+                        let urlResults;
+                        try {
+                            urlResults = await checkSingleUrl(url, elementClass);    
+                        } catch (error) {
+                            console.log(error);
+                            continue;
+                        }
                         
-                        const urlResults = await checkSingleUrl(url, elementClass);
                         allResults.push({
                             url,
                             results: urlResults.results,
@@ -354,6 +365,8 @@ https://another-site.com/page"></textarea>
                 if (document.getElementById("enable-proxy").checked) {
                     urlToFetch = `https://api.allorigins.win/get?url=${encodeURIComponent(url)}`;
                 }
+                console.log("fetching "+urlToFetch+"...");
+
                 const response = await fetch(urlToFetch);
                 
                 if (!response.ok) {
@@ -415,6 +428,14 @@ https://another-site.com/page"></textarea>
                 // Skip empty or special links
                 if (!href || href.startsWith('javascript:') || href.startsWith('mailto:') || href.startsWith('tel:')) {
                     continue;
+                }
+
+                let pattern = document.getElementById("url-starting-pattern").value.trim();
+                if (pattern) {
+                    if (!href.startsWith(pattern) && !href.startsWith("#")) {
+                        console.log("skip "+href);
+                        continue;
+                    }
                 }
                 
                 // Check if it's an anchor link
@@ -512,7 +533,8 @@ https://another-site.com/page"></textarea>
         function displayResults(allResults, totalStats) {
             console.log(allResults);
             console.log(totalStats);
-            
+            global.allResults = allResults;
+            global.totalStats = totalStats;
             if (!document.getElementById("display-results").checked) {
                 let invalidLinks = [];
                 let anchorIssueLinks = [];
@@ -528,6 +550,8 @@ https://another-site.com/page"></textarea>
                 });
                 console.log(invalidLinks);
                 console.log(anchorIssueLinks);
+                global.invalidLinks = invalidLinks;
+                global.anchorIssueLinks = anchorIssueLinks;
                 document.getElementById('loading').style.display = 'none';
                 return;
             }
