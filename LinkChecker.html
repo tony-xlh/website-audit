@@ -365,7 +365,7 @@ https://another-site.com/page"></textarea>
                 if (document.getElementById("enable-proxy").checked) {
                     urlToFetch = `https://api.allorigins.win/get?url=${encodeURIComponent(url)}`;
                 }
-                console.log("fetching "+urlToFetch+"...");
+                console.log("checking "+urlToFetch+"...");
 
                 const response = await fetch(urlToFetch);
                 
@@ -422,6 +422,7 @@ https://another-site.com/page"></textarea>
             
             for (const link of links) {
                 const href = link.getAttribute('href');
+                console.log("checking href: "+href);
                 const text = link.textContent.trim();
                 const result = { href, text, valid: true, issues: [] };
                 
@@ -465,22 +466,37 @@ https://another-site.com/page"></textarea>
                     continue;
                 }
                 
-                // Check if the link is valid
-                try {
-                    const response = await fetch(absoluteUrl, { method: 'HEAD', mode: 'no-cors' });
-                    // In no-cors mode, we can't read the status, but the request will fail if truly invalid
-                    validCount++;
-                } catch (e) {
-                    // Try with GET if HEAD fails (some servers block HEAD)
+                if (document.getElementById("enable-proxy").checked) {
+                    // Check if the link is valid
                     try {
-                        await fetch(absoluteUrl, { method: 'GET', mode: 'no-cors' });
+                        const response = await fetch(absoluteUrl, { method: 'HEAD', mode: 'no-cors' });
+                        // In no-cors mode, we can't read the status, but the request will fail if truly invalid
                         validCount++;
-                    } catch (e2) {
+                    } catch (e) {
+                        console.log(e);
+                        // Try with GET if HEAD fails (some servers block HEAD)
+                        try {
+                            await fetch(absoluteUrl, { method: 'GET', mode: 'no-cors' });
+                            validCount++;
+                        } catch (e2) {
+                            console.log(e2);
+                            result.valid = false;
+                            result.issues.push('Link appears to be broken');
+                            invalidCount++;
+                        }
+                    }
+                }else{
+                    const response = await fetch(absoluteUrl, { method: 'HEAD' });
+                    console.log(response);
+                    if (!response.ok) {
                         result.valid = false;
-                        result.issues.push('Link appears to be broken');
+                        result.issues.push(`Link returned status ${response.status}`);
                         invalidCount++;
+                    } else {
+                        validCount++;
                     }
                 }
+                
                 
                 // Check for anchor in external URL
                 if (absoluteUrl.includes('#')) {
@@ -528,6 +544,27 @@ https://another-site.com/page"></textarea>
                 content += "issues: " + link.result.issues.join(" ") + "\n";
             }
             return content;
+        }
+
+        function getCSVContentFromLinks(){
+            let content = "pageURL,href,text,issues\n";
+            for (let index = 0; index < links.length; index++) {
+                const link = links[index];
+                content += link.url.url + "," + link.result.href + "," + link.result.text + "," + link.result.issues.join(" ") + "\n";
+            }
+            return content;
+        }
+
+        function downloadCSV(){
+            const csvContent = getCSVContentFromLinks();
+            const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = 'link-checker-results.csv';
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
         }
         
         function displayResults(allResults, totalStats) {
