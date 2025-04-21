@@ -192,6 +192,10 @@ https://another-site.com/page"></textarea>
         <label>Display Results (will always output the results in the console):</label>
         
         <input type="checkbox" id="display-results" checked>
+
+        <label>Ignore anchor cases:</label>
+        
+        <input type="checkbox" id="ignore-case">
         
         <label>Filter URLs (start with):</label>
 
@@ -441,7 +445,11 @@ https://another-site.com/page"></textarea>
                 
                 // Check if it's an anchor link
                 if (href.startsWith('#')) {
-                    const anchorId = href.substring(1);
+                    let anchorId = href.substring(1);
+                    let ignoreCase = document.getElementById("ignore-case").checked;
+                    if (ignoreCase) {
+                        anchorId = anchorId.toLowerCase(); //suitable for jekyll docs
+                    }
                     const targetElement = doc.getElementById(anchorId);
                     if (!targetElement) {
                         result.valid = false;
@@ -500,7 +508,11 @@ https://another-site.com/page"></textarea>
                 
                 // Check for anchor in external URL
                 if (absoluteUrl.includes('#')) {
-                    const anchorPart = absoluteUrl.split('#')[1];
+                    let anchorPart = absoluteUrl.split('#')[1];
+                    let ignoreCase = document.getElementById("ignore-case").checked;
+                    if (ignoreCase) {
+                        anchorPart = anchorPart.toLowerCase(); //suitable for jekyll docs
+                    }
                     try {
                         // Fetch the page and check for the anchor
                         const pageResponse = await fetch(absoluteUrl.split('#')[0]);
