@@ -211,6 +211,7 @@ https://another-site.com/page"></textarea>
         </div>
         
         <button id="check-btn">Check Links</button>
+        <button id="download-csv-btn">Download CSV</button>
         <button id="reset-btn" class="secondary">Reset</button>
         
         <div class="loading" id="loading">
@@ -252,6 +253,15 @@ https://another-site.com/page"></textarea>
                 urlList.style.display = 'none';
                 document.getElementById('results').style.display = 'none';
             });
+
+            document.getElementById('download-csv-btn').addEventListener('click', function(){
+                if (global.invalidLinks && global.invalidLinks.length > 0) {
+                    const csvContent = getCSVContentFromLinks(global.invalidLinks);
+                    downloadCSV(csvContent);
+                } else {
+                    alert('No results to download. Please check links first.');
+                }
+            })
             
             // Check button
             document.getElementById('check-btn').addEventListener('click', async function() {
@@ -559,7 +569,7 @@ https://another-site.com/page"></textarea>
             return content;
         }
 
-        function getCSVContentFromLinks(){
+        function getCSVContentFromLinks(links){
             let content = "pageURL,href,text,issues\n";
             for (let index = 0; index < links.length; index++) {
                 const link = links[index];
@@ -568,8 +578,7 @@ https://another-site.com/page"></textarea>
             return content;
         }
 
-        function downloadCSV(){
-            const csvContent = getCSVContentFromLinks();
+        function downloadCSV(csvContent){
             const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
             const url = URL.createObjectURL(blob);
             const a = document.createElement('a');
